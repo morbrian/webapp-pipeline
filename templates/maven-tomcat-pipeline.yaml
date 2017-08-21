@@ -7,12 +7,17 @@ parameters:
   description: The name assigned to all of the application objects defined in this template.
   displayName: Application Name
   required: true
-  value: maven-tomcat-webapp
+  value: jdbc-query
+- name: ARTIFACT_NAME
+  description: The name of the artifact file to copy.
+  displayName: Artifact Name
+  required: true
+  value: jdbc-query
 - name: GIT_SOURCE_URL
   description: The source URL for the application
   displayName: Source URL
   required: true
-  value: https://github.com/openshift/openshift-jee-sample.git
+  value: https://github.com/morbrian/sandbox-jdbc-query.git
 - name: GIT_SOURCE_REF
   description: The source Ref for the application
   displayName: Source Ref
@@ -91,14 +96,14 @@ objects:
                   }
                   stage("Build WAR") {
                     sh "mvn clean package -Popenshift"
-                    stash name:"war", includes:"target/ROOT.war"
+                    stash name:"war", includes:"target/${ARTIFACT_NAME}.war"
                   }
                 }
 
                 node {
                   stage("Build Image") {
                     unstash name:"war"
-                    sh "oc start-build ${appName}-docker --from-file=target/ROOT.war -n ${project}"
+                    sh "oc start-build ${appName}-docker --from-file=target/${ARTIFACT_NAME}.war -n ${project}"
                     openshiftVerifyBuild bldCfg: "${appName}-docker", namespace: project, waitTime: '20', waitUnit: 'min'
                   }
                   stage("Deploy") {
@@ -135,15 +140,13 @@ objects:
     resources: {}
     runPolicy: Serial
     source:
-      dockerfile: |-
-        FROM webserver31-tomcat8
-        COPY ROOT.war /opt/webserver/webapps/ROOT.war
-        CMD /opt/webserver/bin/launch.sh
-      binary:
-        asFile: ROOT.war
       type: Docker
+      binary:
+        asFile: ${ARTIFACT_NAME}.war
+
     strategy:
       dockerStrategy:
+        dockerfilePath: src/main/docker/Dockerfile
         from:
           kind: ImageStreamTag
           name: webserver31-tomcat8:latest
