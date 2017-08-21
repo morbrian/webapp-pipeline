@@ -96,14 +96,18 @@ objects:
                   }
                   stage("Build WAR") {
                     sh "mvn clean package -Popenshift"
-                    stash name:"war", includes:"target/${ARTIFACT_NAME}.war"
+                    dir('target') {
+                      stash name:"war", includes:"${ARTIFACT_NAME}.war"
+                    }
                   }
                 }
 
                 node {
                   stage("Build Image") {
-                    unstash name:"war"
-                    sh "oc start-build ${appName}-docker --from-file=target/${ARTIFACT_NAME}.war -n ${project}"
+                    dir('src/main/docker') {
+                      unstash name:"war"
+                    }
+                    sh "oc start-build ${appName}-docker --from-file=src/main/docker/${ARTIFACT_NAME}.war -n ${project}"
                     openshiftVerifyBuild bldCfg: "${appName}-docker", namespace: project, waitTime: '20', waitUnit: 'min'
                   }
                   stage("Deploy") {
@@ -140,13 +144,14 @@ objects:
     resources: {}
     runPolicy: Serial
     source:
-      type: Docker
-      binary:
-        asFile: ${ARTIFACT_NAME}.war
+      type: Git
+      contextDir: src/main/docker
+      git:
+        uri: ${GIT_SOURCE_URL}
+        ref: ${GIT_SOURCE_REF}
 
     strategy:
       dockerStrategy:
-        dockerfilePath: src/main/docker/Dockerfile
         from:
           kind: ImageStreamTag
           name: webserver31-tomcat8:latest
