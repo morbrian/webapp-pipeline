@@ -40,7 +40,7 @@ oc process \
     -p APP_NAME_UPPER=JDBCQUERY \
     -p ARTIFACT_NAME=jdbc-query \
     -p BACKEND_DB_SERVICE=jdbcquery-data \
-    -p BACKEND_DB_NAME=nicweb \
+    -p BACKEND_DB_NAME=jdbcquery \
     -p BACKEND_DB_SECRET=jdbcquery-dbname-secret \
     -p BACKEND_RESTORE_PATH=skip maven-tomcat-pipeline | oc create -f -
 
