@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Template
+metadata:
+  annotations:
+    description: Persistent volumes needed in minishift for PostgreSQL
+    iconClass: icon-database
+    tags: database,postgresql,crunchy
+  creationTimestamp: null
+  name: minishift-volumes
+objects:
+- apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    labels:
+      postgres: restore
+    name: restore-pv-${PG_PV_GROUP_QUALIFIER}
+  spec:
+    accessModes:
+    - ReadOnlyMany
+    capacity:
+      storage: 1Gi
+    hostPath:
+      path: ${PG_BACKUP_PV_PATH}
+    persistentVolumeReclaimPolicy: Retain
+- apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    labels:
+      postgres: pgconf
+    name: pgconf-pv-${PG_PV_GROUP_QUALIFIER}
+  spec:
+    accessModes:
+    - ReadOnlyMany
+    capacity:
+      storage: 1Gi
+    hostPath:
+      path: ${PG_PGCONF_PV_PATH}
+    persistentVolumeReclaimPolicy: Retain
+parameters:
+- description: Qualifier to label a group of PVs for the same project.
+  name: PG_PV_GROUP_QUALIFIER
+  value: "1"
+- description: Host path of backup database.
+  name: PG_BACKUP_PV_PATH
+  value: /Users/username/minidata/backup
+- description: Host path of pgconf files.
+  name: PG_PGCONF_PV_PATH
+  value: /Users/username/minidata/app-pgconf

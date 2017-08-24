@@ -2,39 +2,6 @@ apiVersion: v1
 kind: Template
 metadata:
   name: maven-tomcat-pipeline
-parameters:
-- name: APP_NAME
-  description: The name assigned to all of the application objects defined in this template.
-  displayName: Application Name
-  required: true
-  value: jdbc-query
-- name: ARTIFACT_NAME
-  description: The name of the artifact file to copy.
-  displayName: Artifact Name
-  required: true
-  value: jdbc-query
-- name: GIT_SOURCE_URL
-  description: The source URL for the application
-  displayName: Source URL
-  required: true
-  value: https://github.com/morbrian/sandbox-jdbc-query.git
-- name: GIT_SOURCE_REF
-  description: The source Ref for the application
-  displayName: Source Ref
-  required: true
-  value: master
-- description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
-  displayName: GitHub Webhook Secret
-  from: '[a-zA-Z0-9]{40}'
-  generate: expression
-  name: GITHUB_WEBHOOK_SECRET
-  required: true
-- description: A secret string used to configure the Generic webhook.
-  displayName: Generic Webhook Secret
-  from: '[a-zA-Z0-9]{40}'
-  generate: expression
-  name: GENERIC_WEBHOOK_SECRET
-  required: true
 objects:
 - apiVersion: v1
   kind: ImageStream
@@ -42,6 +9,15 @@ objects:
     labels:
       app: ${APP_NAME}
     name: ${APP_NAME}
+  spec: {}
+  status:
+    dockerImageRepository: ""
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    labels:
+      app: ${APP_NAME}-platform
+    name: ${APP_NAME}-platform
   spec: {}
   status:
     dockerImageRepository: ""
@@ -82,6 +58,10 @@ objects:
           try {
              timeout(time: 20, unit: 'MINUTES') {
                 def appName="${APP_NAME}"
+                def backendDataSecret="${BACKEND_DB_SECRET}"
+                def backendDbService="${BACKEND_DB_SERVICE}"
+                def backendDbName="${BACKEND_DB_NAME}"
+                def backendRestorePath="${BACKEND_RESTORE_PATH}"
                 def project=""
 
                 node {
@@ -90,10 +70,19 @@ objects:
                   }
                 }
 
+                node {
+                  stage("Deploy Infrastructure") {
+                    sh "oc process -p SECRET_NAME=${backendDataSecret} -n ${project} postgresql-secret | oc create -n ${project} -f -"
+                    sh "oc process -p APP_NAME=${appName} -n ${project} amq-secret | oc create -n ${project} -f -"
+                    sh "oc process -p PG_RESTORE_PATH=${backendRestorePath} -p PG_SERVICE_NAME=${backendDbService} -p SECRET_NAME=${backendDataSecret} -p PG_DATABASE=${backendDbName} -n ${project} crunchydata-single-master-minishift | oc create -n ${project} -f -"
+                  }
+                }
+
                 node("maven") {
                   stage("Checkout") {
                     git url: "${GIT_SOURCE_URL}", branch: "${GIT_SOURCE_REF}"
                   }
+
                   stage("Build WAR") {
                     sh "mvn clean package -Popenshift"
                     dir('target') {
@@ -103,13 +92,19 @@ objects:
                 }
 
                 node {
-                  stage("Build Image") {
-                    dir('src/main/docker') {
-                      unstash name:"war"
-                    }
-                    sh "oc start-build ${appName}-docker --from-file=src/main/docker/${ARTIFACT_NAME}.war -n ${project}"
+                  stage("Build Platform Image") {
+                    sh "oc start-build ${appName}-platform -n ${project}"
+                    openshiftVerifyBuild bldCfg: "${appName}-platform", namespace: project, waitTime: '20', waitUnit: 'min'
+                  }
+                }
+
+                node {
+                  stage("Build Final Image") {
+                    unstash name:"war"
+                    sh "oc start-build ${appName}-docker --from-file=${ARTIFACT_NAME}.war -n ${project}"
                     openshiftVerifyBuild bldCfg: "${appName}-docker", namespace: project, waitTime: '20', waitUnit: 'min'
                   }
+
                   stage("Deploy") {
                     openshiftDeploy deploymentConfig: appName, namespace: project
                   }
@@ -133,6 +128,33 @@ objects:
   kind: BuildConfig
   metadata:
     labels:
+      app: ${APP_NAME}-platform
+    name: ${APP_NAME}-platform
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${APP_NAME}-platform:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      type: Git
+      contextDir: src/main/docker
+      git:
+        uri: ${GIT_SOURCE_URL}
+        ref: ${GIT_SOURCE_REF}
+    strategy:
+      dockerStrategy:
+        from:
+          kind: ImageStreamTag
+          name: webserver31-tomcat8:latest
+      type: Docker
+    triggers: {}
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
       app: ${APP_NAME}-docker
     name: ${APP_NAME}-docker
   spec:
@@ -144,17 +166,18 @@ objects:
     resources: {}
     runPolicy: Serial
     source:
-      type: Git
-      contextDir: src/main/docker
-      git:
-        uri: ${GIT_SOURCE_URL}
-        ref: ${GIT_SOURCE_REF}
-
+      dockerfile: |-
+        FROM ${APP_NAME}-platform
+        COPY ${ARTIFACT_NAME}.war /opt/webserver/webapps/ROOT.war
+        CMD /opt/webserver/bin/launch.sh
+      binary:
+        asFile: ROOT.war
+      type: Docker
     strategy:
       dockerStrategy:
         from:
           kind: ImageStreamTag
-          name: webserver31-tomcat8:latest
+          name: ${APP_NAME}-platform:latest
       type: Docker
     triggers: {}
 - apiVersion: v1
@@ -189,6 +212,27 @@ objects:
           ports:
           - containerPort: 8080
             protocol: TCP
+          env:
+          - name: DB_SERVICE_PREFIX_MAPPING
+            value: ${APP_NAME}-postgresql=${BACKEND_DB_NAME}
+          - name: ${BACKEND_DB_NAME}_JNDI
+            value: 'java:comp/env/DocumentDS'
+          - name: ${BACKEND_DB_NAME}_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: postgresql-master-user
+                name: ${BACKEND_DB_SECRET}
+          - name: ${BACKEND_DB_NAME}_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: postgresql-master-password
+                name: ${BACKEND_DB_SECRET}
+          - name: ${BACKEND_DB_NAME}_DATABASE
+            value: ${BACKEND_DB_NAME}
+          - name: ${APP_NAME_UPPER}_POSTGRESQL_SERVICE_HOST
+            value: ${BACKEND_DB_SERVICE}
+          - name: ${APP_NAME_UPPER}_POSTGRESQL_SERVICE_PORT
+            value: '5432'
           resources: {}
           terminationMessagePath: /dev/termination-log
           livenessProbe:
@@ -262,3 +306,54 @@ objects:
     port:
       targetPort: 8080-tcp
     wildcardPolicy: None
+parameters:
+- name: APP_NAME
+  description: The name assigned to all of the application objects defined in this template, must be lowercase, no special characters.
+  displayName: Application Name
+  required: true
+  value: jdbcquery
+- name: APP_NAME_UPPER
+  descrption: The name upercase version of APP_NAME, must be the exact uppercase of Application Name
+  value: JDBCQUERY
+- name: ARTIFACT_NAME
+  description: The name of the artifact file to copy.
+  displayName: Artifact Name
+  required: true
+  value: jdbc-query
+- name: BACKEND_DB_SERVICE
+  description: Service name for backend database
+  required: true
+  value: jdbcquery-data
+- description: Backend database name, also used to create service name.
+  name: BACKEND_DB_NAME
+  required: true
+  value: jdbcquery
+- description: Backend DB Secret
+  name: BACKEND_DB_SECRET
+  required: true
+  value: jdbcquery-dbname-secret
+- description: path to backup data to retore from
+  name: BACKEND_RESTORE_PATH
+  value: minimal-2017-05-12-17-35-04
+- name: GIT_SOURCE_URL
+  description: The source URL for the application
+  displayName: Source URL
+  required: true
+  value: https://github.com/fsimorbrian/sandbox-jdbc-query.git
+- name: GIT_SOURCE_REF
+  description: The source Ref for the application
+  displayName: Source Ref
+  required: true
+  value: master
+- description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
+  displayName: GitHub Webhook Secret
+  from: '[a-zA-Z0-9]{40}'
+  generate: expression
+  name: GITHUB_WEBHOOK_SECRET
+  required: true
+- description: A secret string used to configure the Generic webhook.
+  displayName: Generic Webhook Secret
+  from: '[a-zA-Z0-9]{40}'
+  generate: expression
+  name: GENERIC_WEBHOOK_SECRET
+  required: true
