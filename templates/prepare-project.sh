@@ -24,8 +24,8 @@ echo "Provisioning volumes"
 
 PV_GROUP_QUALIFIER=$(oc project -q)
 USER_HOME=$( echo ${HOME} | sed 's/\/c//')
-BACKUP_PV_PATH="${USER_HOME}/minidata/backup"
-PGCONF_PV_PATH="${USER_HOME}/minidata/app-pgconf"
+BACKUP_PV_PATH="${HOME}/minidata/backup"
+PGCONF_PV_PATH="${HOME}/minidata/app-pgconf"
 
 oc process \
     -p PG_BACKUP_PV_PATH=${BACKUP_PV_PATH} \

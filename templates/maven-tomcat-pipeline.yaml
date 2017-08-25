@@ -220,12 +220,12 @@ objects:
           - name: ${BACKEND_DB_NAME}_USERNAME
             valueFrom:
               secretKeyRef:
-                key: postgresql-master-user
+                key: postgresql-user
                 name: ${BACKEND_DB_SECRET}
           - name: ${BACKEND_DB_NAME}_PASSWORD
             valueFrom:
               secretKeyRef:
-                key: postgresql-master-password
+                key: postgresql-password
                 name: ${BACKEND_DB_SECRET}
           - name: ${BACKEND_DB_NAME}_DATABASE
             value: ${BACKEND_DB_NAME}
@@ -339,7 +339,7 @@ parameters:
   description: The source URL for the application
   displayName: Source URL
   required: true
-  value: https://github.com/fsimorbrian/sandbox-jdbc-query.git
+  value: https://github.com/morbrian/sandbox-jdbc-query.git
 - name: GIT_SOURCE_REF
   description: The source Ref for the application
   displayName: Source Ref
