@@ -58,10 +58,6 @@ objects:
           try {
              timeout(time: 20, unit: 'MINUTES') {
                 def appName="${APP_NAME}"
-                def backendDataSecret="${BACKEND_DB_SECRET}"
-                def backendDbService="${BACKEND_DB_SERVICE}"
-                def backendDbName="${BACKEND_DB_NAME}"
-                def backendRestorePath="${BACKEND_RESTORE_PATH}"
                 def project=""
 
                 node {
@@ -71,10 +67,9 @@ objects:
                 }
 
                 node {
-                  stage("Deploy Infrastructure") {
-                    sh "oc process -p SECRET_NAME=${backendDataSecret} -n ${project} postgresql-secret | oc create -n ${project} -f -"
-                    sh "oc process -p APP_NAME=${appName} -n ${project} amq-secret | oc create -n ${project} -f -"
-                    sh "oc process -p PG_RESTORE_PATH=${backendRestorePath} -p PG_SERVICE_NAME=${backendDbService} -p SECRET_NAME=${backendDataSecret} -p PG_DATABASE=${backendDbName} -n ${project} crunchydata-single-master-minishift | oc create -n ${project} -f -"
+                  stage("Build Platform Image") {
+                    sh "oc start-build ${appName}-platform -n ${project}"
+                    openshiftVerifyBuild bldCfg: "${appName}-platform", namespace: project, waitTime: '20', waitUnit: 'min'
                   }
                 }
 
@@ -88,13 +83,6 @@ objects:
                     dir('target') {
                       stash name:"war", includes:"${ARTIFACT_NAME}.war"
                     }
-                  }
-                }
-
-                node {
-                  stage("Build Platform Image") {
-                    sh "oc start-build ${appName}-platform -n ${project}"
-                    openshiftVerifyBuild bldCfg: "${appName}-platform", namespace: project, waitTime: '20', waitUnit: 'min'
                   }
                 }
 
@@ -216,7 +204,7 @@ objects:
           - name: DB_SERVICE_PREFIX_MAPPING
             value: ${APP_NAME}-postgresql=${BACKEND_DB_NAME}
           - name: ${BACKEND_DB_NAME}_JNDI
-            value: 'java:comp/env/DocumentDS'
+            value: 'jdbc/DocumentDS'
           - name: ${BACKEND_DB_NAME}_USERNAME
             valueFrom:
               secretKeyRef:
@@ -233,6 +221,12 @@ objects:
             value: ${BACKEND_DB_SERVICE}
           - name: ${APP_NAME_UPPER}_POSTGRESQL_SERVICE_PORT
             value: '5432'
+          - name: ${BACKEND_DB_NAME}_MAX_ACTIVE
+            value: '250'
+          - name: ${BACKEND_DB_NAME}_MAX_IDLE
+            value: '20'
+          - name: ${BACKEND_DB_NAME}_MAX_WAIT
+            value: '30000'
           resources: {}
           terminationMessagePath: /dev/termination-log
           livenessProbe:
@@ -339,7 +333,7 @@ parameters:
   description: The source URL for the application
   displayName: Source URL
   required: true
-  value: https://github.com/morbrian/sandbox-jdbc-query.git
+  value: https://github.com/fsimorbrian/sandbox-jdbc-query.git
 - name: GIT_SOURCE_REF
   description: The source Ref for the application
   displayName: Source Ref

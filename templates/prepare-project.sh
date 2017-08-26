@@ -35,12 +35,41 @@ oc process \
 
 echo "Creating Instances"
 
-oc process \
-    -p APP_NAME=jdbcquery \
-    -p APP_NAME_UPPER=JDBCQUERY \
-    -p ARTIFACT_NAME=jdbc-query \
-    -p BACKEND_DB_SERVICE=jdbcquery-data \
-    -p BACKEND_DB_NAME=jdbcquery \
-    -p BACKEND_DB_SECRET=jdbcquery-dbname-secret \
-    -p BACKEND_RESTORE_PATH=skip maven-tomcat-pipeline | oc create -f -
+export APP_NAME=jdbcquery
+export APP_NAME_UPPER=$(echo ${APP_NAME} | awk '{print toupper($0)}')
+export BACKEND_DB_SECRET=${APP_NAME}-${APP_NAME}-secret
+export BACKEND_DB_SERVICE=${APP_NAME}-data
+export BACKEND_DB_NAME=${APP_NAME}
+export BACKEND_RESTORE_PATH=skip-restore
 
+# create database secret from template
+oc process \
+    -p SECRET_NAME=${BACKEND_DB_SECRET} \
+    -n ${NAMESPACE} \
+    postgresql-secret | oc replace --force -n ${NAMESPACE} -f -
+
+# create amq secret from template
+oc process \
+    -p APP_NAME=${APP_NAME} \
+    -n ${NAMESPACE} \
+    amq-secret | oc replace --force -n ${NAMESPACE} -f -
+
+# create database instance from template
+oc process \
+    -p PG_RESTORE_PATH=${BACKEND_RESTORE_PATH} \
+    -p PG_SERVICE_NAME=${BACKEND_DB_SERVICE} \
+    -p SECRET_NAME=${BACKEND_DB_SECRET} \
+    -p PG_DATABASE=${BACKEND_DB_NAME} \
+    -n ${NAMESPACE} \
+    crunchydata-single-master-minishift | oc replace --force -n ${NAMESPACE} -f -
+
+# create pipeline from template
+oc process \
+    -p APP_NAME=${APP_NAME} \
+    -p APP_NAME_UPPER=${APP_NAME_UPPER} \
+    -p ARTIFACT_NAME=jdbc-query \
+    -p BACKEND_DB_SERVICE=${BACKEND_DB_SERVICE} \
+    -p BACKEND_DB_NAME=${BACKEND_DB_NAME} \
+    -p BACKEND_DB_SECRET=${BACKEND_DB_SECRET} \
+    -p BACKEND_RESTORE_PATH=${BACKEND_RESTORE_PATH} \
+    maven-tomcat-pipeline | oc create -f -

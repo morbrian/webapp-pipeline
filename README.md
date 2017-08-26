@@ -1,7 +1,11 @@
 # Sample webapp with database using OpenShift Pipelines
 
 
+## Results
 
+After the pipeline completes, use the following command to connect to the database instance:
+
+        oc rsh $(  oc get pod |grep jdbcquery-data |awk '{print $1}' ) psql -Upostgres -djdbcquery -h127.0.0.1
 
 ### Minshift Configuration
 
@@ -15,7 +19,7 @@ By default, Minishift on Linux uses libvirt/KVM instead of Virtualbox and the us
 
 These steps assuming the Samba share arleady exists, if not configure Samba and come back to this section.
 
-1. Create the sharej
+1. Create the share
 
         minishift hostfolder add minidata
 
@@ -75,4 +79,3 @@ Reference: https://help.ubuntu.com/community/How%20to%20Create%20a%20Network%20S
        smbclient -L //192.168.0.11/minidata -U docker
 
        smbclient //192.168.0.1/minidata -U docker
-       
