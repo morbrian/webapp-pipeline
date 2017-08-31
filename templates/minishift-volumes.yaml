@@ -13,7 +13,9 @@ objects:
   metadata:
     labels:
       postgres: restore
-    name: restore-pv-${PG_PV_GROUP_QUALIFIER}
+      appid: ${APP_ID}
+      db: ${PG_PV_DB_LABEL}
+    name: restore-pv-${PG_PV_GROUP_QUALIFIER}-${APP_ID}-${PG_PV_DB_LABEL}
   spec:
     accessModes:
     - ReadOnlyMany
@@ -27,7 +29,9 @@ objects:
   metadata:
     labels:
       postgres: pgconf
-    name: pgconf-pv-${PG_PV_GROUP_QUALIFIER}
+      appid: ${APP_ID}
+      db: ${PG_PV_DB_LABEL}
+    name: pgconf-pv-${PG_PV_GROUP_QUALIFIER}-${APP_ID}-${PG_PV_DB_LABEL}
   spec:
     accessModes:
     - ReadOnlyMany
@@ -37,6 +41,12 @@ objects:
       path: ${PG_PGCONF_PV_PATH}
     persistentVolumeReclaimPolicy: Retain
 parameters:
+- description: app identifier
+  name: APP_ID
+  value: appid
+- description: data volume identifier
+  name: PG_PV_DB_LABEL
+  value: data
 - description: Qualifier to label a group of PVs for the same project.
   name: PG_PV_GROUP_QUALIFIER
   value: "1"

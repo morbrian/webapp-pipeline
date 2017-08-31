@@ -12,8 +12,8 @@ objects:
   kind: Service
   metadata:
     labels:
-      name: ${PG_SERVICE_NAME}
-    name: ${PG_SERVICE_NAME}
+      name: ${APP_ID}-${PG_DATABASE}-db-service
+    name: ${APP_ID}-${PG_DATABASE}-db-service
   spec:
     ports:
     - nodePort: 0
@@ -21,8 +21,8 @@ objects:
       protocol: TCP
       targetPort: 5432
     selector:
-      app: ${PG_SERVICE_NAME}
-      deploymentconfig: ${PG_SERVICE_NAME}
+      app: ${APP_ID}-${PG_DATABASE}-db-service
+      deploymentconfig: ${APP_ID}-${PG_DATABASE}-db-service
     sessionAffinity: None
     type: ClusterIP
   status:
@@ -68,13 +68,13 @@ objects:
   metadata:
     creationTimestamp: null
     labels:
-      app: ${PG_SERVICE_NAME}
-    name: ${PG_SERVICE_NAME}
+      app: ${APP_ID}-${PG_DATABASE}-db-service
+    name: ${APP_ID}-${PG_DATABASE}-db-service
   spec:
     replicas: 1
     selector:
-      app: ${PG_SERVICE_NAME}
-      deploymentconfig: ${PG_SERVICE_NAME}
+      app: ${APP_ID}-${PG_DATABASE}-db-service
+      deploymentconfig: ${APP_ID}-${PG_DATABASE}-db-service
     strategy:
       activeDeadlineSeconds: 864001
       recreateParams:
@@ -85,8 +85,8 @@ objects:
       metadata:
         creationTimestamp: null
         labels:
-          app: ${PG_SERVICE_NAME}
-          deploymentconfig: ${PG_SERVICE_NAME}
+          app: ${APP_ID}-${PG_DATABASE}-db-service
+          deploymentconfig: ${APP_ID}-${PG_DATABASE}-db-service
       spec:
         containers:
         - env:
@@ -98,33 +98,33 @@ objects:
             valueFrom:
               secretKeyRef:
                 key: postgresql-root-password
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_MASTER_USER
             valueFrom:
               secretKeyRef:
                 key: postgresql-master-user
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_MASTER_PASSWORD
             valueFrom:
               secretKeyRef:
                 key: postgresql-master-password
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_USER
             valueFrom:
               secretKeyRef:
                 key: postgresql-user-csv-list
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_PASSWORD
             valueFrom:
               secretKeyRef:
                 key: postgresql-password-csv-list
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: SHARED_BUFFERS
             value: 4096MB
           - name: BACKUP_PATH
             value: ${PG_RESTORE_PATH}
           image: crunchydata/crunchy-postgres:${CCP_IMAGE_TAG}
-          name: ${PG_SERVICE_NAME}
+          name: ${APP_ID}-${PG_DATABASE}-db-service
           ports:
           - containerPort: 5432
             protocol: TCP
@@ -166,17 +166,17 @@ objects:
             valueFrom:
               secretKeyRef:
                 key: postgresql-root-password
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_MASTER_USER
             valueFrom:
               secretKeyRef:
                 key: postgresql-master-user
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_MASTER_PASSWORD
             valueFrom:
               secretKeyRef:
                 key: postgresql-master-password
-                name: ${SECRET_NAME}
+                name: ${APP_ID}-${PG_DATABASE}-db-secret
           - name: PG_PORT
             value: "5432"
           - name: PROM_GATEWAY
@@ -204,22 +204,37 @@ objects:
     triggers:
     - type: ConfigChange
   status: {}
+- apiVersion: v1
+  kind: Secret
+  metadata:
+    creationTimestamp: null
+    name: ${APP_ID}-${PG_DATABASE}-db-secret
+  stringData:
+    postgresql-application-admin-password: ${POSTGRESQL_APPLICATION_ADMIN_PASSWORD}
+    postgresql-application-admin-user: ${POSTGRESQL_APPLICATION_ADMIN_USER}
+    postgresql-master-password: ${POSTGRESQL_MASTER_PASSWORD}
+    postgresql-master-user: ${POSTGRESQL_MASTER_USER}
+    postgresql-password: ${POSTGRESQL_PASSWORD}
+    postgresql-password-csv-list: ${POSTGRESQL_APPLICATION_ADMIN_PASSWORD},${POSTGRESQL_PASSWORD}
+    postgresql-root-password: ${POSTGRESQL_ROOT_PASSWORD}
+    postgresql-user: ${POSTGRESQL_USER}
+    postgresql-user-csv-list: ${POSTGRESQL_APPLICATION_ADMIN_USER},${POSTGRESQL_USER}
+  type: opaque
 parameters:
-- description: The name to use for the service and container
-  name: PG_SERVICE_NAME
-  value: apname-db
-- description: name of secret bundle
-  name: SECRET_NAME
-  value: qualifier-database-secret
+- name: APP_ID
+  description: The name assigned to all of the application objects defined in this template, must be lowercase, no special characters.
+  displayName: Application Identifier
+  required: true
+  value: jdbcquery
+- description: The name of the database that will be created
+  name: PG_DATABASE
+  value: data
 - description: The image tag to pull with
   name: CCP_IMAGE_TAG
   value: centos7-9.5-1.4.1
 - description: The image prefix to pull with
   name: CCP_IMAGE_PREFIX
   value: crunchydata
-- description: The name of the database that will be created
-  name: PG_DATABASE
-  value: dbname
 - description: The name for the pvc
   name: PG_DATA_PVC_NAME
   value: data-pvc
@@ -232,5 +247,33 @@ parameters:
 - description: Path to restore data, path is a relative offset from /backup mount point.
   name: PG_RESTORE_PATH
   value: minimal-2017-05-12-17-35-04
+- description: PostgreSQL application username
+  from: '[a-z]{12}'
+  generate: expression
+  name: POSTGRESQL_USER
+- description: PostgreSQL application password
+  from: '[a-zA-Z0-9]{12}'
+  generate: expression
+  name: POSTGRESQL_PASSWORD
+- description: PostgreSQL root password
+  from: '[a-zA-Z0-9]{12}'
+  generate: expression
+  name: POSTGRESQL_ROOT_PASSWORD
+- description: PostgreSQL master user (often master)
+  from: '[a-z]{12}'
+  generate: expression
+  name: POSTGRESQL_MASTER_USER
+- description: PostgreSQL master password
+  from: '[a-zA-Z0-9]{12}'
+  generate: expression
+  name: POSTGRESQL_MASTER_PASSWORD
+- description: PostgreSQL application user with admin privs
+  from: '[a-z]{12}'
+  generate: expression
+  name: POSTGRESQL_APPLICATION_ADMIN_USER
+- description: PostgreSQL application admin password
+  from: '[a-zA-Z0-9]{12}'
+  generate: expression
+  name: POSTGRESQL_APPLICATION_ADMIN_PASSWORD
 
 

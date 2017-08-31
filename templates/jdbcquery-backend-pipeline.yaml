@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Template
 metadata:
-  name: maven-tomcat-pipeline
+  name: jdbcquery-backend-pipeline
 objects:
 - apiVersion: v1
   kind: ImageStream
   metadata:
     labels:
-      app: ${APP_NAME}
-    name: ${APP_NAME}
+      app: ${APP_ID}
+    name: ${APP_ID}
   spec: {}
   status:
     dockerImageRepository: ""
@@ -16,8 +16,8 @@ objects:
   kind: ImageStream
   metadata:
     labels:
-      app: ${APP_NAME}-platform
-    name: ${APP_NAME}-platform
+      app: ${APP_ID}-platform
+    name: ${APP_ID}-platform
   spec: {}
   status:
     dockerImageRepository: ""
@@ -49,15 +49,15 @@ objects:
       pipeline.alpha.openshift.io/uses: '[{"name": "${NAME}", "namespace": "", "kind": "DeploymentConfig"}]'
     creationTimestamp: null
     labels:
-      name: ${APP_NAME}
-    name: ${APP_NAME}
+      name: ${APP_ID}
+    name: ${APP_ID}
   spec:
     strategy:
       jenkinsPipelineStrategy:
         jenkinsfile: |-
           try {
              timeout(time: 20, unit: 'MINUTES') {
-                def appName="${APP_NAME}"
+                def appName="${APP_ID}"
                 def project=""
 
                 node {
@@ -116,13 +116,13 @@ objects:
   kind: BuildConfig
   metadata:
     labels:
-      app: ${APP_NAME}-platform
-    name: ${APP_NAME}-platform
+      app: ${APP_ID}-platform
+    name: ${APP_ID}-platform
   spec:
     output:
       to:
         kind: ImageStreamTag
-        name: ${APP_NAME}-platform:latest
+        name: ${APP_ID}-platform:latest
     postCommit: {}
     resources: {}
     runPolicy: Serial
@@ -143,20 +143,23 @@ objects:
   kind: BuildConfig
   metadata:
     labels:
-      app: ${APP_NAME}-docker
-    name: ${APP_NAME}-docker
+      app: ${APP_ID}-docker
+    name: ${APP_ID}-docker
   spec:
     output:
       to:
         kind: ImageStreamTag
-        name: ${APP_NAME}:latest
+        name: ${APP_ID}:latest
     postCommit: {}
     resources: {}
     runPolicy: Serial
     source:
       dockerfile: |-
-        FROM ${APP_NAME}-platform
+        FROM ${APP_ID}-platform
         COPY ${ARTIFACT_NAME}.war /opt/webserver/webapps/ROOT.war
+        USER root
+        RUN chmod -R 770 /opt/webserver/conf/Catalina/localhost
+        USER jboss
         CMD /opt/webserver/bin/launch.sh
       binary:
         asFile: ROOT.war
@@ -165,20 +168,20 @@ objects:
       dockerStrategy:
         from:
           kind: ImageStreamTag
-          name: ${APP_NAME}-platform:latest
+          name: ${APP_ID}-platform:latest
       type: Docker
     triggers: {}
 - apiVersion: v1
   kind: DeploymentConfig
   metadata:
     labels:
-      app: ${APP_NAME}
-    name: ${APP_NAME}
+      app: ${APP_ID}
+    name: ${APP_ID}
   spec:
     replicas: 1
     selector:
-      app: ${APP_NAME}
-      deploymentconfig: ${APP_NAME}
+      app: ${APP_ID}
+      deploymentconfig: ${APP_ID}
     strategy:
       rollingParams:
         intervalSeconds: 1
@@ -190,42 +193,60 @@ objects:
     template:
       metadata:
         labels:
-          app: ${APP_NAME}
-          deploymentconfig: ${APP_NAME}
+          app: ${APP_ID}
+          deploymentconfig: ${APP_ID}
       spec:
         containers:
-        - image: ${APP_NAME}:latest
+        - image: ${APP_ID}:latest
           imagePullPolicy: Always
-          name: ${APP_NAME}
+          name: ${APP_ID}
           ports:
           - containerPort: 8080
             protocol: TCP
           env:
-          - name: DB_SERVICE_PREFIX_MAPPING
-            value: ${APP_NAME}-postgresql=${BACKEND_DB_NAME}
-          - name: ${BACKEND_DB_NAME}_JNDI
-            value: 'jdbc/DocumentDS'
-          - name: ${BACKEND_DB_NAME}_USERNAME
+          - name: DATA_DB_SERVICE_HOST
+            value: ${APP_ID}-${PG_DATA_DB}-db-service
+          - name: DATA_DB_SERVICE_PORT
+            value: '5432'
+          - name: DATA_DB_USERNAME
             valueFrom:
               secretKeyRef:
                 key: postgresql-user
-                name: ${BACKEND_DB_SECRET}
-          - name: ${BACKEND_DB_NAME}_PASSWORD
+                name: ${APP_ID}-${PG_DATA_DB}-db-secret
+          - name: DATA_DB_PASSWORD
             valueFrom:
               secretKeyRef:
                 key: postgresql-password
-                name: ${BACKEND_DB_SECRET}
-          - name: ${BACKEND_DB_NAME}_DATABASE
-            value: ${BACKEND_DB_NAME}
-          - name: ${APP_NAME_UPPER}_POSTGRESQL_SERVICE_HOST
-            value: ${BACKEND_DB_SERVICE}
-          - name: ${APP_NAME_UPPER}_POSTGRESQL_SERVICE_PORT
-            value: '5432'
-          - name: ${BACKEND_DB_NAME}_MAX_ACTIVE
+                name: ${APP_ID}-${PG_DATA_DB}-db-secret
+          - name: DATA_DB_NAME
+            value: ${APP_ID}-${PG_DATA_DB}-db-name
+          - name: DATA_DB_MAX_TOTAL
             value: '250'
-          - name: ${BACKEND_DB_NAME}_MAX_IDLE
+          - name: DATA_DB_MAX_IDLE
             value: '20'
-          - name: ${BACKEND_DB_NAME}_MAX_WAIT
+          - name: DATA_DB_MAX_WAIT
+            value: '30000'
+          - name: LOB_DB_SERVICE_HOST
+            value: ${APP_ID}-${PG_LOB_DB}-db-service
+          - name: LOB_DB_SERVICE_PORT
+            value: '5432'
+          - name: LOB_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: postgresql-user
+                name: ${APP_ID}-${PG_LOB_DB}-db-secret
+          - name: LOB_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: postgresql-password
+                name: ${APP_ID}-${PG_LOB_DB}-db-secret
+          - name: LOB_DB_NAME
+            value: ${APP_ID}-${PG_LOB_DB}-db-name
+          - name: LOB_DB_MAX_TOTAL
+            value: '250'
+          - name: LOB_DB_MAX_IDLE
+            value: '20'
+          - name: LOB_DB_MAX_WAIT
             value: '30000'
           resources: {}
           terminationMessagePath: /dev/termination-log
@@ -259,10 +280,10 @@ objects:
     - imageChangeParams:
         automatic: true
         containerNames:
-        - ${APP_NAME}
+        - ${APP_ID}
         from:
           kind: ImageStreamTag
-          name: ${APP_NAME}:latest
+          name: ${APP_ID}:latest
       type: ImageChange
   status: {}
 - apiVersion: v1
@@ -271,8 +292,8 @@ objects:
     annotations:
       openshift.io/generated-by: OpenShiftNewApp
     labels:
-      app: ${APP_NAME}
-    name: ${APP_NAME}
+      app: ${APP_ID}
+    name: ${APP_ID}
   spec:
     ports:
     - name: 8080-tcp
@@ -280,8 +301,8 @@ objects:
       protocol: TCP
       targetPort: 8080
     selector:
-      app: ${APP_NAME}
-      deploymentconfig: ${APP_NAME}
+      app: ${APP_ID}
+      deploymentconfig: ${APP_ID}
     sessionAffinity: None
     type: ClusterIP
   status:
@@ -289,56 +310,42 @@ objects:
 - apiVersion: v1
   kind: Route
   metadata:
-    name: ${APP_NAME}
+    name: ${APP_ID}
     labels:
-      app: ${APP_NAME}
+      app: ${APP_ID}
   spec:
     to:
       kind: Service
-      name: ${APP_NAME}
+      name: ${APP_ID}
       weight: 100
     port:
       targetPort: 8080-tcp
     wildcardPolicy: None
 parameters:
-- name: APP_NAME
+- name: APP_ID
   description: The name assigned to all of the application objects defined in this template, must be lowercase, no special characters.
-  displayName: Application Name
+  displayName: Application Identifier
   required: true
   value: jdbcquery
-- name: APP_NAME_UPPER
-  descrption: The name upercase version of APP_NAME, must be the exact uppercase of Application Name
-  value: JDBCQUERY
-- name: ARTIFACT_NAME
-  description: The name of the artifact file to copy.
-  displayName: Artifact Name
-  required: true
-  value: jdbc-query
-- name: BACKEND_DB_SERVICE
-  description: Service name for backend database
-  required: true
-  value: jdbcquery-data
-- description: Backend database name, also used to create service name.
-  name: BACKEND_DB_NAME
-  required: true
-  value: jdbcquery
-- description: Backend DB Secret
-  name: BACKEND_DB_SECRET
-  required: true
-  value: jdbcquery-dbname-secret
-- description: path to backup data to retore from
-  name: BACKEND_RESTORE_PATH
-  value: minimal-2017-05-12-17-35-04
-- name: GIT_SOURCE_URL
-  description: The source URL for the application
-  displayName: Source URL
-  required: true
-  value: https://github.com/morbrian/sandbox-jdbc-query.git
+- name: PG_LOB_DB
+  description: Name of the large object database
+  value: lob
+- name: PG_DATA_DB
+  description: Name of the relational database
+  value: data
 - name: GIT_SOURCE_REF
   description: The source Ref for the application
   displayName: Source Ref
   required: true
   value: master
+- name: GIT_SOURCE_URL
+  description: The source URL for the application
+  displayName: Source URL
+  required: true
+  value: https://github.com/morbrian/sandbox-jdbc-query.git
+- name: ARTIFACT_NAME
+  description: The name of war artifact.
+  value: jdbc-query
 - description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
   displayName: GitHub Webhook Secret
   from: '[a-zA-Z0-9]{40}'
