@@ -219,7 +219,7 @@ objects:
                 key: postgresql-password
                 name: ${APP_ID}-${PG_DATA_DB}-db-secret
           - name: DATA_DB_NAME
-            value: ${APP_ID}-${PG_DATA_DB}-db-name
+            value: ${PG_DATA_DB}
           - name: DATA_DB_MAX_TOTAL
             value: '250'
           - name: DATA_DB_MAX_IDLE
@@ -241,7 +241,7 @@ objects:
                 key: postgresql-password
                 name: ${APP_ID}-${PG_LOB_DB}-db-secret
           - name: LOB_DB_NAME
-            value: ${APP_ID}-${PG_LOB_DB}-db-name
+            value: ${PG_LOB_DB}
           - name: LOB_DB_MAX_TOTAL
             value: '250'
           - name: LOB_DB_MAX_IDLE
